@@ -34,6 +34,7 @@ KEY_PAGES = '__pages__'
 KEY_LAYERS = '__layers__'
 KEY_KEYWORDS = '__keywords__'
 KEY_TITLES = '__titles__'
+KEY_LINKS = '__links__'
 
 
 class SupernoteMetadata:
@@ -136,6 +137,11 @@ class Notebook:
         if has_titles:
             for t in metadata.footer.get(KEY_TITLES):
                 self.titles.append(Title(t))
+        self.links = []
+        has_links = metadata.footer.get(KEY_LINKS) is not None
+        if has_links:
+            for l in metadata.footer.get(KEY_LINKS):
+                self.links.append(Link(l))
         self.pages = []
         total = metadata.get_total_pages()
         for i in range(total):
@@ -163,6 +169,15 @@ class Notebook:
 
     def get_titles(self):
         return self.titles
+
+    def get_links(self):
+        return self.links
+
+    def get_fileid(self):
+        return self.metadata.header.get('FILE_ID')
+
+    def is_realtime_recognition(self):
+        return self.metadata.header.get('FILE_RECOGN_TYPE') == '1'
 
 class Cover:
     def __init__(self):
@@ -215,11 +230,63 @@ class Title:
     def get_position(self):
         return self.position
 
+class Link:
+    TYPE_PAGE_LINK = 0
+    TYPE_FILE_LINK = 1
+    TYPE_WEB_LINK = 4
+
+    DIRECTION_OUT = 0
+    DIRECTION_IN = 1
+
+    def __init__(self, link_info):
+        self.metadata = link_info
+        self.content = None
+        self.page_number = 0
+
+    def set_content(self, content):
+        self.content = content
+
+    def get_content(self):
+        return self.content
+
+    def set_page_number(self, page_number):
+        self.page_number = page_number
+
+    def get_page_number(self):
+        return self.page_number
+
+    def get_type(self):
+        return int(self.metadata['LINKTYPE'])
+
+    def get_inout(self):
+        return int(self.metadata['LINKINOUT'])
+
+    def get_position(self):
+        return int(self.metadata['LINKRECT'].split(',')[1]) # get top value from "left,top,width,height"
+
+    def get_rect(self):
+        (left, top, width, height) = self.metadata['LINKRECT'].split(',')
+        return (int(left), int(top), int(left) + int(width), int(top) + int(height))
+
+    def get_timestamp(self):
+        return self.metadata['LINKTIMESTAMP']
+
+    def get_filepath(self):
+        return self.metadata['LINKFILE'] # Base64-encoded file path or URL
+
+    def get_fileid(self):
+        return None if self.metadata['LINKFILEID'] == 'none' else self.metadata['LINKFILEID']
+
+    def get_pageid(self):
+        return None if self.metadata['PAGEID'] == 'none' else self.metadata['PAGEID']
+
 class Page:
     def __init__(self, page_info):
         self.metadata = page_info
         self.content = None
         self.totalpath = None
+        self.recogn_file = None
+        self.recogn_text = None
         self.layers = []
         layer_supported = page_info.get(KEY_LAYERS) is not None
         if layer_supported:
@@ -285,6 +352,21 @@ class Page:
 
     def get_totalpath(self):
         return self.totalpath
+
+    def get_pageid(self):
+        return self.metadata.get('PAGEID')
+
+    def set_recogn_file(self, recogn_file):
+        self.recogn_file = recogn_file
+
+    def get_recogn_file(self):
+        return self.recogn_file
+
+    def set_recogn_text(self, recogn_text):
+        self.recogn_text = recogn_text
+
+    def get_recogn_text(self):
+        return self.recogn_text
 
 class Layer:
     def __init__(self, layer_info):

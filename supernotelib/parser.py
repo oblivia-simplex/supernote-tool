@@ -97,15 +97,19 @@ def load(stream, metadata=None, policy='strict'):
         content = _get_content_at_address(stream, address)
         keyword.set_content(content)
     # store title data to notebook object
-    title_keys = filter(lambda k : k.startswith('TITLE_'), note.get_metadata().footer.keys())
-    page_numbers = []
-    for k in title_keys:
-        page_numbers.append(int(k[6:10]) - 1) # e.g. get '0123' from 'TITLE_01234567'
+    page_numbers = _get_page_number_from_footer_property(note.get_metadata().footer, 'TITLE_')
     for i, title in enumerate(note.get_titles()):
         address = _get_title_address(title)
         content = _get_content_at_address(stream, address)
         title.set_content(content)
         title.set_page_number(page_numbers[i])
+    # store link data to notebook object
+    page_numbers = _get_page_number_from_footer_property(note.get_metadata().footer, 'LINK')
+    for i, link in enumerate(note.get_links()):
+        address = _get_link_address(link)
+        content = _get_content_at_address(stream, address)
+        link.set_content(content)
+        link.set_page_number(page_numbers[i])
     page_total = metadata.get_total_pages()
     for p in range(page_total):
         addresses = _get_bitmap_address(metadata, p)
@@ -121,6 +125,16 @@ def load(stream, metadata=None, policy='strict'):
         if totalpath_address > 0:
             content = _get_content_at_address(stream, totalpath_address)
             note.get_page(p).set_totalpath(content)
+        # store recogn file data to notebook object
+        recogn_file_address = _get_recogn_file_address(metadata, p)
+        if recogn_file_address > 0:
+            content = _get_content_at_address(stream, recogn_file_address)
+            note.get_page(p).set_recogn_file(content)
+        # store recogn text data to notebook object
+        recogn_text_address = _get_recogn_text_address(metadata, p)
+        if recogn_text_address > 0:
+            content = _get_content_at_address(stream, recogn_text_address)
+            note.get_page(p).set_recogn_text(content)
     return note
 
 def load_notebook(file_name, metadata=None, policy='strict'):
@@ -190,6 +204,16 @@ def _get_title_address(title):
     """
     return int(title.metadata['TITLEBITMAP'])
 
+def _get_link_address(link):
+    """Returns link content address.
+
+    Returns
+    -------
+    int
+        link content address
+    """
+    return int(link.metadata['LINKBITMAP'])
+
 def _get_bitmap_address(metadata, page_number):
     """Returns bitmap address of the given page number.
 
@@ -221,6 +245,45 @@ def _get_totalpath_address(metadata, page_number):
     else:
         address = 0
     return address
+
+def _get_recogn_file_address(metadata, page_number):
+    """Returns recogn file address of the given page number.
+
+    Returns
+    -------
+    int
+        recogn file address
+    """
+    if 'RECOGNFILE' in metadata.pages[page_number]:
+        address = int(metadata.pages[page_number]['RECOGNFILE'])
+    else:
+        address = 0
+    return address
+
+def _get_recogn_text_address(metadata, page_number):
+    """Returns recogn text address of the given page number.
+
+    Returns
+    -------
+    int
+        recogn text address
+    """
+    if 'RECOGNTEXT' in metadata.pages[page_number]:
+        address = int(metadata.pages[page_number]['RECOGNTEXT'])
+    else:
+        address = 0
+    return address
+
+def _get_page_number_from_footer_property(footer, prefix):
+    keys = filter(lambda k : k.startswith(prefix), footer.keys())
+    page_numbers = []
+    for k in keys:
+        if type(footer[k]) == list:
+            for _ in range(len(footer[k])):
+                page_numbers.append(int(k[6:10]) - 1)
+        else:
+            page_numbers.append(int(k[6:10]) - 1) # e.g. get '0123' from 'TITLE_01234567'
+    return page_numbers
 
 
 class SupernoteParser:
@@ -463,6 +526,8 @@ class SupernoteXParser(SupernoteParser):
         'noteSN_FILE_VER_20210009', # Firmware version C.291
         'noteSN_FILE_VER_20210010', # Firmware version Chauvet 2.1.6
         'noteSN_FILE_VER_20220011'  # Firmware version Chauvet 2.1.6_beta
+        'noteSN_FILE_VER_20220011', # Firmware version Chauvet 2.5.17
+        'noteSN_FILE_VER_20220013'  # Firmware version Chauvet 2.6.19
     ]
     LAYER_KEYS = ['MAINLAYER', 'LAYER1', 'LAYER2', 'LAYER3', 'BGLAYER']
 
@@ -478,6 +543,11 @@ class SupernoteXParser(SupernoteParser):
         titles = list(map(lambda addr: self._parse_title_block(fobj, addr), title_addresses))
         if titles:
             footer[fileformat.KEY_TITLES] = titles
+        # parse links
+        link_addresses = self._get_link_addresses(footer)
+        links = list(map(lambda addr: self._parse_link_block(fobj, addr), link_addresses))
+        if links:
+            footer[fileformat.KEY_LINKS] = links
         return footer
 
     def _get_keyword_addresses(self, footer):
@@ -504,6 +574,19 @@ class SupernoteXParser(SupernoteParser):
         return title_addresses
 
     def _parse_title_block(self, fobj, address):
+        return self._parse_metadata_block(fobj, address)
+
+    def _get_link_addresses(self, footer):
+        link_keys = filter(lambda k : k.startswith('LINK'), footer.keys())
+        link_addresses = []
+        for k in link_keys:
+            if type(footer[k]) == list:
+                link_addresses.extend(list(map(int, footer[k])))
+            else:
+                link_addresses.append(int(footer[k]))
+        return link_addresses
+
+    def _parse_link_block(self, fobj, address):
         return self._parse_metadata_block(fobj, address)
 
     def _get_page_addresses(self, footer):
